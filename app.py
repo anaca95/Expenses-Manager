@@ -620,46 +620,41 @@ def display_page(pathname):
 
 ###############  ABA 2 ###########################
 @callback(
-Output("dash_table1", "columns"),
+    Output("dash_table1", "columns"),
     Output("dash_table1", "data"),
+    Output("nome-do-item", "value"),
+    Output("qtd-item", "value"),
+    Output("preco-item", "value"),
+    Output("despesas-dropdown", "value"),
     Input("register-button", "n_clicks"),
     State("nome-do-item", "value"),
     State("qtd-item", "value"),
     State("preco-item", "value"),
     State("despesas-dropdown", "value"),
-
     prevent_initial_call=True,
 )
-
 def register_item(n_clicks, nome, qtd, preco, despesas):
+    now = datetime.now()
     worksheet = spreadsheet.worksheet(FOLHA_EVENTOS)
 
-    # Read existing rows once
+    # Write the new row
+    if nome:
+        worksheet.append_row(
+            [now.strftime("%d/%m/%Y"), nome, qtd, preco, despesas],
+            value_input_option="USER_ENTERED",
+        )
+
+    # Read the updated sheet once
     df = pd.DataFrame(worksheet.get_all_records())
 
-    row = {
-        "ITEM": nome,
-        "QTD": qtd,
-        "PREÇO": preco,
-        "DESPESAS": despesas,
-    }
-
-    # Persist the new row
-    worksheet.append_row(
-        list(row.values()),
-        value_input_option="USER_ENTERED",
-    )
-
-    # Update the local copy without reading the sheet again
-    df = pd.concat(
-        [df, pd.DataFrame([row])],
-        ignore_index=True,
-    )
-
-    columns = [{"name": column, "id": column} for column in df.columns]
+    columns = [
+        {"name": column, "id": column}
+        for column in df.columns
+    ]
     data = df.to_dict("records")
 
-    return columns, data
+    # Clear all form fields after a successful submission
+    return columns, data, None, None, None, None
 
 ###############  ABA 1 ###########################
 @callback(
