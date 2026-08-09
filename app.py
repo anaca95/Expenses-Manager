@@ -1,7 +1,7 @@
 from datetime import datetime
 from pathlib import Path
 from uuid import uuid4
-
+import plotly.graph_objects as go
 import dash_bootstrap_components as dbc
 import pandas as pd
 import gspread
@@ -595,7 +595,8 @@ def display_page(pathname):
                     # className="apontamento-table-body",
                 ),
 
-
+                dcc.Graph(id="grafico-data"),
+                dcc.Graph(id="grafico-despesas"),
 
 
             ],
@@ -619,6 +620,113 @@ def display_page(pathname):
 # ============================================================
 
 ###############  ABA 2 ###########################
+
+def parse_currency(value):
+    if value is None or value == "":
+        return 0.0
+
+    if isinstance(value, (int, float)):
+        return float(value)
+
+    cleaned = (
+        str(value)
+        .strip()
+        .replace("R$", "")
+        .replace(" ", "")
+    )
+
+    if "," in cleaned:
+        cleaned = cleaned.replace(".", "").replace(",", ".")
+
+    return float(cleaned)
+
+
+
+@callback(
+    Output("grafico-data", "figure"),
+    Output("grafico-despesas", "figure"),
+    Input("dash_table1", "data"),
+)
+def update_plots(data):
+    if not data:
+        return go.Figure(), go.Figure()
+
+    df = pd.DataFrame(data)
+
+    df["DATA"] = pd.to_datetime(
+        df["DATA"],
+        dayfirst=True,
+        errors="coerce",
+    )
+
+    # PREÇO already contains quantity × unit price
+    df["TOTAL"] = df["PREÇO"].apply(parse_currency)
+
+    # Remove rows with invalid dates or empty expense types
+    df = df.dropna(subset=["DATA"])
+    df = df[df["DESPESAS"].notna()]
+    df = df[df["DESPESAS"].astype(str).str.strip() != ""]
+
+    by_date = (
+        df.groupby("DATA", as_index=False)["TOTAL"]
+        .sum()
+        .sort_values("DATA")
+    )
+
+    by_expense = (
+        df.groupby("DESPESAS", as_index=False)["TOTAL"]
+        .sum()
+        .sort_values("TOTAL", ascending=False)
+    )
+
+    date_figure = go.Figure()
+
+    date_figure.add_trace(
+        go.Scatter(
+            x=by_date["DATA"],
+            y=by_date["TOTAL"],
+            mode="lines+markers",
+            name="Expenses",
+            hovertemplate=(
+                "%{x|%d/%m/%Y}<br>"
+                "R$ %{y:,.2f}"
+                "<extra></extra>"
+            ),
+        )
+    )
+
+    date_figure.update_layout(
+        title="DESPESAS POR DATA",
+        xaxis_title="DATA",
+        yaxis_title="TOTAL",
+        template="plotly_white",
+    )
+
+    expense_figure = go.Figure()
+
+    expense_figure.add_trace(
+        go.Bar(
+            x=by_expense["DESPESAS"],
+            y=by_expense["TOTAL"],
+            hovertemplate=(
+                "%{x}<br>"
+                "R$ %{y:,.2f}"
+                "<extra></extra>"
+            ),
+        )
+    )
+
+    expense_figure.update_layout(
+        title="DESPESAS POR TIPO",
+        xaxis_title="TIPO",
+        yaxis_title="TOTAL",
+        template="plotly_white",
+    )
+
+    return date_figure, expense_figure
+
+
+
 @callback(
     Output("dash_table1", "columns"),
     Output("dash_table1", "data"),
@@ -631,30 +739,101 @@ def display_page(pathname):
     State("qtd-item", "value"),
     State("preco-item", "value"),
     State("despesas-dropdown", "value"),
-    prevent_initial_call=True,
+
 )
+
 def register_item(n_clicks, nome, qtd, preco, despesas):
-    now = datetime.now()
     worksheet = spreadsheet.worksheet(FOLHA_EVENTOS)
 
-    # Write the new row
-    if nome:
-        worksheet.append_row(
-            [now.strftime("%d/%m/%Y"), nome, qtd, preco, despesas],
-            value_input_option="USER_ENTERED",
+    fields_are_valid = (
+        nome not in (None, "")
+        and qtd not in (None, "")
+        and preco not in (None, "")
+        and despesas not in (None, "")
+    )
+
+    print(
+        "SUBMISSION:",
+        f"n_clicks={n_clicks!r}",
+        f"nome={nome!r}",
+        f"qtd={qtd!r}",
+        f"preco={preco!r}",
+        f"despesas={despesas!r}",
+        f"valid={fields_are_valid}",
+        f"worksheet={worksheet.title!r}",
+    )
+
+    if n_clicks and fields_are_valid:
+        qtd_numerica = parse_currency(qtd)
+        preco_unitario = parse_currency(preco)
+        preco_total = qtd_numerica * preco_unitario
+
+        print(
+            "APPENDING:",
+            nome,
+            qtd_numerica,
+            preco_total,
+            despesas,
         )
 
-    # Read the updated sheet once
-    df = pd.DataFrame(worksheet.get_all_records())
+        result = worksheet.append_row(
+            [
+                datetime.now().strftime("%d/%m/%Y"),
+                nome,
+                qtd_numerica,
+                preco_total,
+                despesas,
+            ],
+            value_input_option="RAW",
+            table_range="A:E",
+        )
+
+        print("GOOGLE RESPONSE:", result)
+
+    values = worksheet.get("A1:E")
+
+    if not values:
+        return [], [], no_update, no_update, no_update, no_update
+
+    headers = values[0]
+    rows = [
+        (row + [""] * len(headers))[:len(headers)]
+        for row in values[1:]
+    ]
 
     columns = [
-        {"name": column, "id": column}
-        for column in df.columns
+        {"name": header, "id": header}
+        for header in headers
     ]
-    data = df.to_dict("records")
 
-    # Clear all form fields after a successful submission
-    return columns, data, None, None, None, None
+    data = pd.DataFrame(
+        rows,
+        columns=headers,
+    ).to_dict("records")
+
+    if n_clicks and fields_are_valid:
+        return columns, data, None, None, None, None
+
+    return (
+        columns,
+        data,
+        no_update,
+        no_update,
+        no_update,
+        no_update,
+    )
+
+
+
+
+
+
+
+
+
+
+
+
 
 ###############  ABA 1 ###########################
 @callback(
