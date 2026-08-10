@@ -1,0 +1,39 @@
+html, body, #react-entry-point { min-height: 100%; margin: 0; background: #f3f6f9; font-family: "Segoe UI", Arial, sans-serif; }
+.app-container { min-height: 100vh; padding: 0; }
+.sidebar-column { background: #17324d; }
+.sidebar { position: sticky; top: 0; min-height: 100vh; padding: 22px 14px; background: #17324d; }
+.brand { display: flex; align-items: center; gap: 11px; margin: 0 7px 28px; }
+.brand h4 { margin: 0; color: #fff; font-size: 16px; letter-spacing: .6px; }
+.brand p { margin: 2px 0 0; color: #9fb4c8; font-size: 9px; letter-spacing: .8px; }
+.logo { display: flex; align-items: center; justify-content: center; width: 38px; height: 38px; background: #fff; color: #17324d; font-size: 19px; font-weight: 800; }
+.sidebar-nav { gap: 7px; }
+.sidebar-nav .nav-link { padding: 12px 13px; border-radius: 3px; color: #dbe7f1; font-size: 11px; font-weight: 650; }
+.sidebar-nav .nav-link:hover { color: #fff; background: rgba(255,255,255,.1); }
+.sidebar-nav .nav-link.active { color: #17324d; background: #fff; }
+.page-content { min-height: 100vh; padding: 26px; }
+.page-header { margin-bottom: 18px; }
+.page-title { margin: 0; color: #17324d; font-size: 24px; font-weight: 750; }
+.page-subtitle { margin: 4px 0 0; color: #718096; font-size: 10px; font-weight: 650; letter-spacing: .8px; }
+.card { margin-bottom: 20px; padding: 20px; border: 1px solid #dbe3ea; border-radius: 0; background: #fff; box-shadow: 0 2px 8px rgba(23,50,77,.05); }
+.form-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 17px; }
+.field label { display: block; margin-bottom: 7px; color: #41566b; font-size: 10px; font-weight: 700; letter-spacing: .55px; }
+.field input { width: 100%; height: 40px; padding: 0 11px; border: 1px solid #cbd5df; border-radius: 3px; box-sizing: border-box; font-size: 12px; }
+.field .Select-control { height: 40px; border: 1px solid #cbd5df; border-radius: 3px; }
+.field .Select-placeholder, .field .Select-value-label { line-height: 38px; font-size: 12px; }
+.button-row { display: flex; gap: 10px; margin-top: 20px; }
+.primary-button, .secondary-button { min-height: 38px; padding: 0 18px; border-radius: 3px; font-size: 10px; font-weight: 700; letter-spacing: .45px; cursor: pointer; }
+.primary-button { border: 1px solid #17324d; background: #17324d; color: #fff; }
+.secondary-button { border: 1px solid #cbd5df; background: #fff; color: #526579; }
+.message { margin-top: 14px; padding: 10px 12px; border-left: 4px solid; font-size: 11px; font-weight: 650; }
+.success { border-color: #2e8b57; background: #edf8f2; color: #256d47; }
+.error { border-color: #c0392b; background: #fdf0ef; color: #9f3026; }
+.table-heading { display: flex; align-items: center; justify-content: space-between; gap: 15px; margin-bottom: 15px; }
+.table-heading h4 { margin: 0; color: #17324d; font-size: 14px; }
+.table-heading p { margin: 3px 0 0; color: #7b8c9d; font-size: 9px; letter-spacing: .5px; }
+@media (max-width: 900px) {
+  .form-grid { grid-template-columns: 1fr; }
+  .page-content { padding: 14px; }
+  .sidebar { padding: 18px 8px; }
+  .brand h4, .brand p { display: none; }
+  .sidebar-nav .nav-link { padding: 10px 7px; font-size: 9px; }
+}
