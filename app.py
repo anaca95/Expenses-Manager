@@ -294,6 +294,21 @@ def display_page(pathname):
                     ],
                     className="card",
                 ),
+                dcc.Dropdown(
+                    id="grafico-expense-filter",
+                    options=[
+                        {"label": "Todas as despesas", "value": "TODAS"},
+                        {"label": "🍽️ Alimentação", "value": "ALIMENTACAO"},
+                        {"label": "💊 Farmácia", "value": "FARMACIA"},
+                        {"label": "🧴 Higiene pessoal", "value": "HIGIENE PESSOAL"},
+                        {"label": "📦 Outros", "value": "OUTROS"},
+                    ],
+                    value="TODAS",
+                    clearable=False,
+                    placeholder="Selecione o tipo de despesa",
+                    className="expense-plot-filter",
+                ),
+
                 dcc.Graph(id="grafico-data"),
                 dcc.Graph(id="grafico-despesas"),
 
@@ -665,8 +680,9 @@ def parse_currency(value):
     Output("grafico-data", "figure"),
     Output("grafico-despesas", "figure"),
     Input("dash_table1", "data"),
+    Input("grafico-expense-filter", "value"),
 )
-def update_plots(data):
+def update_plots(data, selected_expense):
     if not data:
         return go.Figure(), go.Figure()
 
@@ -681,75 +697,99 @@ def update_plots(data):
     # PREÇO already contains quantity × unit price
     df["TOTAL"] = df["PREÇO"].apply(parse_currency)
 
-    # Remove rows with invalid dates or empty expense types
+    # Remove invalid rows
     df = df.dropna(subset=["DATA"])
     df = df[df["DESPESAS"].notna()]
-    df = df[df["DESPESAS"].astype(str).str.strip() != ""]
+    df = df[
+        df["DESPESAS"].astype(str).str.strip() != ""
+    ]
 
+    # If nothing or "TODAS" is selected, keep every expense type.
+    # Otherwise, filter by the selected expense.
+    if selected_expense and selected_expense != "TODAS":
+        df = df[
+            df["DESPESAS"].apply(normalize_text)
+            == normalize_text(selected_expense)
+        ]
+
+    if df.empty:
+        empty_figure = go.Figure()
+
+        empty_figure.add_annotation(
+            text="Nenhum dado encontrado",
+            x=0.5,
+            y=0.5,
+            xref="paper",
+            yref="paper",
+            showarrow=False,
+            font={"size": 16},
+        )
+
+        empty_figure.update_xaxes(visible=False)
+        empty_figure.update_yaxes(visible=False)
+
+        return empty_figure, go.Figure(empty_figure)
+
+    # Total grouped by date
     by_date = (
         df.groupby("DATA", as_index=False)["TOTAL"]
         .sum()
         .sort_values("DATA")
     )
 
+    figure_date = go.Figure(
+        go.Bar(
+            x=by_date["DATA"],
+            y=by_date["TOTAL"],
+            marker_color="#2ecc71",
+            hovertemplate=(
+                "<b>%{x|%d/%m/%Y}</b><br>"
+                "Total: R$ %{y:,.2f}"
+                "<extra></extra>"
+            ),
+        )
+    )
+
+    if not selected_expense or selected_expense == "TODAS":
+        title_suffix = "Todas as despesas"
+    else:
+        title_suffix = str(selected_expense).title()
+
+    figure_date.update_layout(
+        title=f"Gastos por data — {title_suffix}",
+        xaxis_title="Data",
+        yaxis_title="Total gasto (R$)",
+        template="plotly_white",
+    )
+
+    # Total grouped by expense type
     by_expense = (
         df.groupby("DESPESAS", as_index=False)["TOTAL"]
         .sum()
         .sort_values("TOTAL", ascending=False)
     )
 
-    date_figure = go.Figure()
-
-    date_figure.add_trace(
-        go.Scatter(
-            x=by_date["DATA"],
-            y=by_date["TOTAL"],
-            mode="lines+markers",
-            name="Expenses",
-            hovertemplate=(
-                "%{x|%d/%m/%Y}<br>"
-                "R$ %{y:,.2f}"
-                "<extra></extra>"
-            ),
-        )
-    )
-
-
-
-    date_figure.update_xaxes(
-        title_text="DATA",
-        tickformat="%d/%m/%Y",
-    )
-
-    date_figure.update_layout(
-        title="DESPESAS POR DATA",
-        xaxis_title="DATA",
-        yaxis_title="TOTAL",
-        template="plotly_white",
-    )
-
-    expense_figure = go.Figure()
-
-    expense_figure.add_trace(
+    figure_expenses = go.Figure(
         go.Bar(
             x=by_expense["DESPESAS"],
             y=by_expense["TOTAL"],
+            marker_color="#3498db",
             hovertemplate=(
-                "%{x}<br>"
-                "R$ %{y:,.2f}"
+                "<b>%{x}</b><br>"
+                "Total: R$ %{y:,.2f}"
                 "<extra></extra>"
             ),
         )
     )
 
-    expense_figure.update_layout(
-        title="DESPESAS POR TIPO",
-        xaxis_title="TIPO",
-        yaxis_title="TOTAL",
+    figure_expenses.update_layout(
+        title=f"Total por tipo — {title_suffix}",
+        xaxis_title="Tipo de despesa",
+        yaxis_title="Total gasto (R$)",
         template="plotly_white",
     )
 
-    return date_figure, expense_figure
+    return figure_date, figure_expenses
 
 
 
