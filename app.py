@@ -72,7 +72,7 @@ app.layout = dbc.Container(
                                     html.Div(
                                         [
                                             html.H4("SISTEMA"),
-                                            html.P("CADASTRO"),
+                                            html.P("DESPESAS DOMÉSTICAS"),
                                         ]
                                     ),
                                 ],
@@ -135,6 +135,10 @@ def display_page(pathname):
     if pathname in ("/", "/main"):
         return html.Div(
     [
+        html.H2("OVERVIEW DAS DESPESAS"),
+
+        html.Br(),
+
         html.H3("Gastos por item"),
 
         dcc.Dropdown(
@@ -325,6 +329,92 @@ def format_brl(value):
     )
 
 
+def get_item_group(item_name):
+    name = normalize_text(item_name)
+
+    group_rules = [
+        # SHAMPOO
+        ("SHAMPOO DOVE HIDRATACAO", "SHAMPOO"),
+        ("SHAMPOO PANTENE LISO EXTREMO", "SHAMPOO"),
+
+        # DESODORANTE
+        ("DESODORANTE NIVEA", "DESODORANTE"),
+        ("DESODORANTE", "DESODORANTE"),
+
+        ("SABONETE DOVE", "SABONETE"),
+        ("SENSODYNE", "PASTA DE DENTE"),
+
+        # Rice
+        ("ARROZ A GREGA", "ARROZ"),
+        ("ARROZ BRANCO", "ARROZ"),
+        ("ARROZ INTEGRAL", "ARROZ"),
+
+        # Beer
+        ("CERVEJA BRAHMA", "CERVEJA"),
+        ("CERVEJA PURO MALTE", "CERVEJA"),
+
+        # Beans
+        ("FEIJAO TROPEIRO", "FEIJÃO"),
+        ("FEIJAO CARIOCA", "FEIJÃO"),
+
+        # Bread
+        ("PAO FRANCES", "PÃO"),
+        ("BISNAGUINHA", "PÃO"),
+
+        # Chicken
+        ("FILE DE FRANGO", "FRANGO FATIADO"),
+        ("FILE DE PEITO", "FRANGO"),
+        ("PEITO DE FRANGO", "FRANGO"),
+        ("FRANGO GRELHADO", "FRANGO GRELHADO"),
+
+        # Pasta
+        ("MACARRAO A BOLONHESA", "MACARRÃO"),
+        ("MACARRAO BOLONHESA", "MACARRÃO"),
+
+        # MIOJO
+        ("MACARRAO NISSIN", "MACARRÃO INSTANTÂNEO"),
+
+        # Massas
+        ("CANELONE", "MASSAS"),
+
+        # Cassava
+        ("MANDIOCA FRITA", "MANDIOCA"),
+        ("PURE DE MANDIOCA", "MANDIOCA"),
+
+        # Soft drinks
+        ("REFRIGERANTE COCA COLA", "REFRIGERANTE"),
+        ("REFRIGERANTE SUKITA", "REFRIGERANTE"),
+        ("REFRIGERANTE 2L", "REFRIGERANTE"),
+
+        # Dairy
+        ("LEITE INTEGRAL", "LEITE"),
+        ("BEBIDA LACTEA", "BEBIDA LACTEA"),
+        ("ACHOC NESCAU", "BEBIDA LACTEA"),
+        ("MUSSARELA FATIADA", "QUEIJO FATIADO"),
+        ("CREME DE RICOTA", "QUEIJO"),
+        ("REQUEIJAO", "QUEIJO"),
+
+        # Fish
+        ("FILE DE MERLUZA A MILANESA", "PEIXE"),
+        ("FILE DE MERLUZA", "PEIXE"),
+
+        # Supplements
+        ("SUPER WHEY", "WHEY"),
+        ("BARRA WHEY", "WHEY BARRA"),
+
+        # Farofa
+        ("FAROFA ESPECIAL", "FAROFA"),
+        ("FAROFA TRADICIONAL", "FAROFA"),
+    ]
+
+    for variation, group_name in group_rules:
+        if variation in name:
+            return group_name
+
+    # Items without a group retain their original name
+    return str(item_name).strip()
+
+
 def get_item_emoji(item_name):
     name = normalize_text(item_name)
 
@@ -462,15 +552,16 @@ def display_expenses_by_item(selected_expense):
         except (ValueError, TypeError):
             continue
 
-        normalized_item = normalize_text(item_name)
+        group_name = get_item_group(item_name)
+        group_key = normalize_text(group_name)
 
-        if normalized_item not in grouped_items:
-            grouped_items[normalized_item] = {
-                "name": item_name,
+        if group_key not in grouped_items:
+            grouped_items[group_key] = {
+                "name": group_name,
                 "total": 0.0,
             }
 
-        grouped_items[normalized_item]["total"] += amount
+        grouped_items[group_key]["total"] += amount
 
     if not grouped_items:
         return html.P(
