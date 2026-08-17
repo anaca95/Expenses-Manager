@@ -777,8 +777,9 @@ def update_plots(data, selected_expense):
             y=by_expense["TOTAL"],
             marker_color="#3498db",
             hovertemplate=(
-                "%{x|%d/%m/%Y}<br>"
+                "%{x}<br>"
                 "R$ %{y:,.2f}"
+                "<extra></extra>"
             ),
         )
     )
