@@ -707,10 +707,12 @@ def update_plots(data, selected_expense):
     # If nothing or "TODAS" is selected, keep every expense type.
     # Otherwise, filter by the selected expense.
     if selected_expense and selected_expense != "TODAS":
-        df = df[
+        df_filtered = df[
             df["DESPESAS"].apply(normalize_text)
             == normalize_text(selected_expense)
         ]
+    else:
+        df_filtered = df
 
     if df.empty:
         empty_figure = go.Figure()
@@ -732,13 +734,13 @@ def update_plots(data, selected_expense):
 
     # Total grouped by date
     by_date = (
-        df.groupby("DATA", as_index=False)["TOTAL"]
+        df_filtered.groupby("DATA", as_index=False)["TOTAL"]
         .sum()
         .sort_values("DATA")
     )
 
     figure_date = go.Figure(
-        go.Bar(
+        go.Scatter(
             x=by_date["DATA"],
             y=by_date["TOTAL"],
             marker_color="#2ecc71",
@@ -775,9 +777,8 @@ def update_plots(data, selected_expense):
             y=by_expense["TOTAL"],
             marker_color="#3498db",
             hovertemplate=(
-                "<b>%{x}</b><br>"
-                "Total: R$ %{y:,.2f}"
-                "<extra></extra>"
+                "%{x|%d/%m/%Y}<br>"
+                "R$ %{y:,.2f}"
             ),
         )
     )
@@ -788,6 +789,16 @@ def update_plots(data, selected_expense):
         yaxis_title="Total gasto (R$)",
         template="plotly_white",
     )
+
+    figure_date.update_xaxes(
+        title_text="DATA",
+        tickformat="%d/%m/%Y",
+    )
+
+    figure_date.update_layout(
+        title="DESPESAS POR DATA",
+        xaxis_title="DATA",
+        yaxis_title="TOTAL")
 
     return figure_date, figure_expenses
 
