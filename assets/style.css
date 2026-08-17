@@ -37,3 +37,71 @@ html, body, #react-entry-point { min-height: 100%; margin: 0; background: #f3f6f
   .brand h4, .brand p { display: none; }
   .sidebar-nav .nav-link { padding: 10px 7px; font-size: 9px; }
 }
+
+/* PAGINA MAIN */
+
+.expense-summary-section {
+    margin-top: 30px;
+}
+
+.expense-summary-section .Select,
+.expense-summary-section .dash-dropdown {
+    max-width: 420px;
+    margin-bottom: 20px;
+}
+
+
+.expense-item-card {
+    position: relative;
+    overflow: hidden;
+    min-height: 110px;
+    transition:
+        transform 0.2s ease,
+        box-shadow 0.2s ease;
+}
+
+.expense-item-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 18px rgba(0, 0, 0, 0.12);
+}
+
+.expense-card-percentage {
+    margin-top: 6px;
+    color: #198754;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.expense-cards-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+    gap: 16px;
+}
+
+.expense-item-card {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 18px;
+    border-radius: 14px;
+    background: white;
+    border: 1px solid #e8e8e8;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.expense-card-emoji {
+    font-size: 34px;
+}
+
+.expense-card-name {
+    color: #666;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.expense-card-total {
+    margin-top: 5px;
+    font-size: 20px;
+    font-weight: 700;
+    color: #222;
+}

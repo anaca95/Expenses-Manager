@@ -5,6 +5,7 @@ import plotly.graph_objects as go
 import dash_bootstrap_components as dbc
 import pandas as pd
 import gspread
+import unicodedata
 from dash import (
     Dash,
     Input,
@@ -51,6 +52,7 @@ app.layout = dbc.Container(
             id="url",
             refresh=False,
         ),
+
 
         dbc.Row(
             [
@@ -130,6 +132,34 @@ TIPO_DESPESAS = ["HIGIENE PESSOAL", "ALIMENTAÇÃO", "FARMÁCIA", "LIMPEZA", "VE
     Input("url", "pathname"),
 )
 def display_page(pathname):
+    if pathname in ("/", "/main"):
+        return html.Div(
+    [
+        html.H3("Gastos por item"),
+
+        dcc.Dropdown(
+            id="expense-type-selector",
+            options=[
+                {"label": "🍽️ Alimentação", "value": "ALIMENTACAO"},
+                {"label": "💊 Farmácia", "value": "FARMACIA"},
+                {"label": "🧴 Higiene pessoal", "value": "HIGIENE PESSOAL"},
+                {"label": "🧴 Vestuário e acessórios", "value": "VESTUÁRIO E ACESSÓRIOS"},
+                {"label": "📦 Delivery", "value": "DELIVERY"},
+                {"label": "📦 Outros", "value": "OUTROS"},
+            ],
+            value="ALIMENTACAO",
+            clearable=False,
+            placeholder="Selecione um tipo de despesa",
+        ),
+
+        html.Div(
+            id="expense-items-cards",
+            className="expense-cards-container",
+        ),
+    ],
+    className="expense-summary-section",
+)
+
     if pathname == "/cadastroFiscal":
         return html.Div(
             [
@@ -274,6 +304,248 @@ def display_page(pathname):
 # ============================================================
 # REGISTER, CLEAR FIELDS AND CLEAR TABLE
 # ============================================================
+
+############### ABA 1 ###########################
+def normalize_text(value):
+    value = str(value or "").strip().upper()
+
+    return "".join(
+        character
+        for character in unicodedata.normalize("NFD", value)
+        if unicodedata.category(character) != "Mn"
+    )
+
+
+def format_brl(value):
+    return (
+        f"R$ {value:,.2f}"
+        .replace(",", "_")
+        .replace(".", ",")
+        .replace("_", ".")
+    )
+
+
+def get_item_emoji(item_name):
+    name = normalize_text(item_name)
+
+    emoji_rules = [
+        # Drinks
+        ("CERVEJA", "🍺"),
+        ("REFRIGERANTE", "🥤"),
+        ("COCA COLA", "🥤"),
+        ("SUKITA", "🥤"),
+        ("AGUA DE COCO", "🥥"),
+        ("AGUA MINERAL", "💧"),
+        ("SUCO DE UVA", "🍇"),
+        ("LEITE", "🥛"),
+        ("BEBIDA LACTEA", "🥛"),
+        ("IOGURTE", "🥣"),
+        ("ACHOC", "🍫"),
+        ("NESCAU", "🍫"),
+
+        # Bakery and snacks
+        ("PAO FRANCES", "🥖"),
+        ("BISNAGUINHA", "🍞"),
+        ("BISCOITO", "🍪"),
+        ("COXINHA", "🥟"),
+        ("LANCHE", "🥪"),
+        ("PIZZA", "🍕"),
+        ("CANELONE", "🍝"),
+
+        # Fruit and vegetables
+        ("BANANA", "🍌"),
+        ("SALADA", "🥗"),
+        ("BATATA", "🥔"),
+        ("MANDIOCA", "🥔"),
+        ("PURE", "🥔"),
+        ("REFOGADO", "🥘"),
+
+        # Meat, fish and eggs
+        ("FILE DE MERLUZA", "🐟"),
+        ("MERLUZA", "🐟"),
+        ("PEIXE", "🐟"),
+        ("CUSCUZ FRANGO", "🌽"),
+        ("MAIONESE FRANGO", "🥗"),
+        ("PEITO DE FRANGO", "🍗"),
+        ("FILE DE FRANGO", "🍗"),
+        ("FILE DE PEITO", "🍗"),
+        ("FRANGO", "🍗"),
+        ("OVOS", "🥚"),
+
+        # Grains and prepared food
+        ("MACARRAO", "🍝"),
+        ("ARROZ", "🍚"),
+        ("FEIJAO", "🫘"),
+        ("FAROFA", "🥣"),
+        ("CUSCUZ", "🌽"),
+        ("CEREAL", "🥣"),
+        ("CER NESTLE", "🥣"),
+        ("NESFIT", "🥣"),
+
+        # Dairy
+        ("MUSSARELA", "🧀"),
+        ("CREME DE RICOTA", "🧀"),
+        ("REQUEIJAO", "🧀"),
+        ("RICOTA", "🧀"),
+        ("QUEIJO", "🧀"),
+
+        # Pantry
+        ("ACUCAR", "🧂"),
+
+        # Supplements and medicines
+        ("SUPER WHEY", "💪"),
+        ("BARRA WHEY", "💪"),
+        ("WHEY", "💪"),
+        ("CREATINA", "💪"),
+        ("DIPIRONA", "💊"),
+        ("TORSILAX", "💊"),
+        ("LUFTAL", "💊"),
+
+        # Hygiene and personal care
+        ("PAPEL HIGIENICO", "🧻"),
+        ("SENSODYNE", "🪥"),
+        ("SABONETE", "🧼"),
+        ("SHAMPOO", "🧴"),
+        ("DESODORANTE", "🧴"),
+        ("CAREFREE", "🩹"),
+        ("KERATON", "💇"),
+        ("POMADA CAPICILIN", "💇"),
+        ("ESMALTE", "💅"),
+
+        # Clothing and household
+        ("TENIS", "👟"),
+        ("PILHA", "🔋"),
+        ("LAMP", "💡"),
+        ("LED", "💡"),
+    ]
+
+    for keyword, emoji in emoji_rules:
+        if keyword in name:
+            return emoji
+
+    return "🛒"
+
+
+
+
+@callback(
+    Output("expense-items-cards", "children"),
+    Input("expense-type-selector", "value"),
+)
+def display_expenses_by_item(selected_expense):
+    if not selected_expense:
+        return html.P("Selecione uma categoria.")
+
+    worksheet = spreadsheet.worksheet(FOLHA_EVENTOS)
+    values = worksheet.get("A1:E")
+
+    if not values or len(values) < 2:
+        return html.P("Nenhuma despesa encontrada.")
+
+    grouped_items = {}
+
+    for row in values[1:]:
+        row = (row + [""] * 5)[:5]
+
+        item_name = str(row[1]).strip()
+        total_value = row[3]
+        category = row[4]
+
+        if normalize_text(category) != normalize_text(selected_expense):
+            continue
+
+        if not item_name:
+            continue
+
+        try:
+            amount = parse_currency(total_value)
+        except (ValueError, TypeError):
+            continue
+
+        normalized_item = normalize_text(item_name)
+
+        if normalized_item not in grouped_items:
+            grouped_items[normalized_item] = {
+                "name": item_name,
+                "total": 0.0,
+            }
+
+        grouped_items[normalized_item]["total"] += amount
+
+    if not grouped_items:
+        return html.P(
+            "Nenhum item encontrado para esta categoria."
+        )
+
+    # ADD THE SORTING BLOCK HERE
+
+    sorted_items = sorted(
+        grouped_items.values(),
+        key=lambda item: item["total"],
+        reverse=True,
+    )
+
+    category_total = sum(
+        item["total"]
+        for item in sorted_items
+    )
+
+    # ADD THE CARDS RETURN BLOCK AFTER THE SORTING
+    return [
+        html.Div(
+            [
+                html.Div(
+                    get_item_emoji(item["name"]),
+                    className="expense-card-emoji",
+                ),
+
+                html.Div(
+                    [
+                        html.Div(
+                            item["name"],
+                            className="expense-card-name",
+                        ),
+
+                        html.Div(
+                            format_brl(item["total"]),
+                            className="expense-card-total",
+                        ),
+
+                        html.Div(
+                            f"{item['percentage']:.1f}% da categoria",
+                            className="expense-card-percentage",
+                        ),
+                    ]
+                ),
+            ],
+            className="expense-item-card",
+
+            # Green progress-bar effect
+            style={
+                "background": (
+                    "linear-gradient("
+                    "to right, "
+                    f"rgba(46, 204, 113, 0.35) 0%, "
+                    f"rgba(46, 204, 113, 0.35) {item['percentage']}%, "
+                    f"white {item['percentage']}%, "
+                    "white 100%"
+                    ")"
+                )
+            },
+        )
+        for item in [
+            {
+                **grouped_item,
+                "percentage": (
+                    grouped_item["total"] / category_total * 100
+                    if category_total
+                    else 0
+                ),
+            }
+            for grouped_item in sorted_items
+        ]
+    ]
+
 
 ###############  ABA 2 ###########################
 
