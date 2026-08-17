@@ -119,7 +119,7 @@ app.layout = dbc.Container(
 )
 
 
-TIPO_DESPESAS = ["HIGIENE PESSOAL", "ALIMENTAÇÃO", "FARMÁCIA", "LIMPEZA", "OUTROS"]
+TIPO_DESPESAS = ["HIGIENE PESSOAL", "ALIMENTAÇÃO", "FARMÁCIA", "LIMPEZA", "VESTUÁRIO E ACESSÓRIOS","DELIVERY", "OUTROS"]
 
 # ============================================================
 # PAGE NAVIGATION
@@ -130,7 +130,6 @@ TIPO_DESPESAS = ["HIGIENE PESSOAL", "ALIMENTAÇÃO", "FARMÁCIA", "LIMPEZA", "OU
     Input("url", "pathname"),
 )
 def display_page(pathname):
-
     if pathname == "/cadastroFiscal":
         return html.Div(
             [
@@ -254,6 +253,13 @@ def display_page(pathname):
                     # className="apontamento-table-body",
                 ),
 
+                html.Div(
+                    [
+                        html.P("Total gasto neste mês"),
+                        html.H3("R$ 0,00", id="total-mensal"),
+                    ],
+                    className="card",
+                ),
                 dcc.Graph(id="grafico-data"),
                 dcc.Graph(id="grafico-despesas"),
 
@@ -262,16 +268,7 @@ def display_page(pathname):
             className="card",
         )
 
-    return html.Div(
-        [
-            html.H2("PÁGINA NÃO ENCONTRADA"),
 
-            html.P(
-                "SELECIONE UMA OPÇÃO NO MENU."
-            ),
-        ],
-        className="card",
-    )
 
 
 # ============================================================
@@ -393,6 +390,9 @@ def update_plots(data):
 
 
 
+
+
+
 @callback(
     Output("dash_table1", "columns"),
     Output("dash_table1", "data"),
@@ -400,6 +400,7 @@ def update_plots(data):
     Output("qtd-item", "value"),
     Output("preco-item", "value"),
     Output("despesas-dropdown", "value"),
+    Output("total-mensal", "children"),
     Input("register-button", "n_clicks"),
     State("nome-do-item", "value"),
     State("qtd-item", "value"),
@@ -458,8 +459,47 @@ def register_item(n_clicks, nome, qtd, preco, despesas):
 
     values = worksheet.get("A1:E")
 
+    # calculate the total spent in a month and display it in a card like box
+    agora = datetime.now()
+    total_mensal = 0.0
+
+    for row in values[1:]:
+        row = (row + [""] * 5)[:5]
+
+        try:
+            data_registro = datetime.strptime(
+                str(row[0]).strip(),
+                "%d/%m/%Y",
+            )
+
+            if (
+                data_registro.month == agora.month
+                and data_registro.year == agora.year
+            ):
+                # Column D contains preco_total
+                total_mensal += parse_currency(row[3])
+
+        except (ValueError, TypeError, IndexError):
+            continue
+
+    total_mensal_formatado = (
+        f"R$ {total_mensal:,.2f}"
+        .replace(",", "_")
+        .replace(".", ",")
+        .replace("_", ".")
+    )
+
     if not values:
-        return [], [], no_update, no_update, no_update, no_update
+        return (
+            [],
+            [],
+            no_update,
+            no_update,
+            no_update,
+            no_update,
+            "R$ 0,00",
+        )
+
 
     headers = values[0]
     rows = [
@@ -477,8 +517,20 @@ def register_item(n_clicks, nome, qtd, preco, despesas):
         columns=headers,
     ).to_dict("records")
 
+    data = data[::-1]
+
+
+
     if n_clicks and fields_are_valid:
-        return columns, data, None, None, None, None
+        return (
+            columns,
+            data,
+            None,
+            None,
+            None,
+            None,
+            total_mensal_formatado,
+        )
 
     return (
         columns,
@@ -487,6 +539,7 @@ def register_item(n_clicks, nome, qtd, preco, despesas):
         no_update,
         no_update,
         no_update,
+        total_mensal_formatado,
     )
 
 
