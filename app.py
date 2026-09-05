@@ -6,6 +6,7 @@ import dash_bootstrap_components as dbc
 import pandas as pd
 import gspread
 import unicodedata
+import re
 from dash import (
     Dash,
     Input,
@@ -81,7 +82,11 @@ app.layout = dbc.Container(
 
                             dbc.Nav(
                                 [
-
+                                    dbc.NavLink(
+                                        "INÍCIO",
+                                        href="/",
+                                        id="home-link",
+                                    ),
                                     dbc.NavLink(
                                         "CADASTRO FISCAL",
                                         href="/cadastroFiscal",
@@ -136,6 +141,7 @@ def display_page(pathname):
         return html.Div(
     [
         html.H2("OVERVIEW DAS DESPESAS"),
+        home_month_filter(),
 
         html.Br(),
 
@@ -159,6 +165,46 @@ def display_page(pathname):
         html.Div(
             id="expense-items-cards",
             className="expense-cards-container",
+        ),
+
+        html.Hr(),
+        html.H3("Previsão: dias úteis × fim de semana"),
+        html.P(
+            "Estimativa baseada na frequência e no valor dos gastos "
+            "da categoria selecionada."
+        ),
+
+        dbc.Row(
+            [
+                dbc.Col(
+                    html.Div(
+                        id="weekday-forecast-card",
+                        className="card p-3 h-100",
+                    ),
+                    md=4,
+                ),
+                dbc.Col(
+                    html.Div(
+                        id="weekend-forecast-card",
+                        className="card p-3 h-100",
+                    ),
+                    md=4,
+                ),
+                dbc.Col(
+                    html.Div(
+                        id="monthly-forecast-card",
+                        className="card p-3 h-100",
+                    ),
+                    md=4,
+                ),
+            ],
+            className="g-3 mb-3",
+        ),
+
+        dcc.Graph(id="weekday-weekend-forecast"),
+        html.Small(
+            id="forecast-method-note",
+            className="text-muted",
         ),
     ],
     className="expense-summary-section",
@@ -289,7 +335,7 @@ def display_page(pathname):
 
                 html.Div(
                     [
-                        html.P("Total gasto neste mês"),
+                        html.P("Total gasto", id="total-mensal-label"),
                         html.H3("R$ 0,00", id="total-mensal"),
                     ],
                     className="card",
@@ -309,6 +355,14 @@ def display_page(pathname):
                     className="expense-plot-filter",
                 ),
 
+                html.Label("Mês do resumo e dos gráficos", htmlFor="grafico-month-filter"),
+                dcc.Dropdown(
+                    id="grafico-month-filter",
+                    options=[{"label": "Todos os meses", "value": "TODOS"}],
+                    value="TODOS",
+                    clearable=False,
+                    className="expense-plot-filter",
+                ),
                 dcc.Graph(id="grafico-data"),
                 dcc.Graph(id="grafico-despesas"),
 
@@ -325,6 +379,54 @@ def display_page(pathname):
 # ============================================================
 
 ############### ABA 1 ###########################
+@callback(Output("home-link", "active"), Input("url", "pathname"))
+def highlight_home(pathname):
+    return pathname in ("/", "/main")
+
+
+def date_matches_month(value, selected_month):
+    if not selected_month or selected_month == "TODOS":
+        return True
+    date = pd.to_datetime(value, dayfirst=True, errors="coerce")
+    return pd.notna(date) and date.strftime("%Y-%m") == selected_month
+
+
+def home_month_filter():
+    values = spreadsheet.worksheet(FOLHA_EVENTOS).get("A1:E")
+    data = [{"DATA": row[0]} for row in values[1:] if row]
+    current_month = datetime.now().strftime("%Y-%m")
+    options, _ = update_plot_months(data, current_month)
+    if not any(option["value"] == current_month for option in options):
+        options.insert(1, {"label": datetime.now().strftime("%m/%Y"), "value": current_month})
+    return html.Div([
+        html.Label("Mês do resumo", htmlFor="home-month-filter"),
+        dcc.Dropdown(id="home-month-filter", options=options,
+                     value=current_month, clearable=False),
+    ], className="mb-3")
+
+
+@callback(
+    Output("total-mensal", "children"),
+    Output("total-mensal-label", "children"),
+    Input("dash_table1", "data"),
+    Input("grafico-month-filter", "value"),
+)
+def update_month_total(data, selected_month):
+    total = 0.0
+    for row in data or []:
+        if date_matches_month(row.get("DATA", ""), selected_month):
+            try:
+                total += parse_currency(row.get("PREÇO"))
+            except (ValueError, TypeError):
+                continue
+    label = (
+        f"Total gasto em {selected_month[5:]}/{selected_month[:4]}"
+        if selected_month and selected_month != "TODOS"
+        else "Total gasto em todos os meses"
+    )
+    return format_brl(total), label
+
+
 def normalize_text(value):
     value = str(value or "").strip().upper()
 
@@ -344,90 +446,78 @@ def format_brl(value):
     )
 
 
+# Aliases are matched at the start of the item name, on whole words.
+# Add variations to the tuples below; the longest matching alias wins.
+ITEM_ALIASES = {
+    "ARROZ": ("ARROZ",),
+    "FEIJÃO": ("FEIJAO",),
+    "PÃO": ("PAO FRANCES", "BISNAGUINHA", "BISNAGUINHAS"),
+    "CERVEJA": ("CERVEJA",),
+    "REFRIGERANTE": ("REFRIGERANTE", "COCA COLA", "SUKITA"),
+    "FRANGO": ("FILE DE FRANGO", "FILE DE PEITO", "PEITO DE FRANGO", "PEITO FRANGO", "FRANGO", "PARMEGIANA DE FRANGO"),
+    "PEITO DE FRANGO (FATIADOS)": ("PEITO DE FRANGO FATIADO", "PEITO FRANGO FATIADO", "PEITO DE FRANGO FATIADOS", "PEITO FRANGO FATIADOS", "FRANGO FATIADO", "FRANGO FATIADOS"),
+    "PEIXE": ("FILE DE MERLUZA", "MERLUZA"),
+    "MACARRÃO INSTANTÂNEO": ("MACARRAO NISSIN", "MACARRAO INSTANTANEO", "MIOJO"),
+    "MACARRÃO": ("MACARRAO",),
+    "MASSAS": ("CANELONE", "LASANHA", "NHOQUE", "PANQUECA"),
+    "MANDIOCA": ("MANDIOCA", "PURE DE MANDIOCA"),
+    "BATATA": ("BATATA FRITA", "BATATA RUSTICA"),
+    "BATATA-DOCE": ("BATATA DOCE",),
+    "FAROFA": ("FAROFA",),
+    "CUSCUZ": ("CUSCUZ",),
+    "SALADA": ("SALADA",),
+    "LEGUMES SALTEADOS": ("LEGUMES SALTEADOS",),
+    "COXINHA": ("COXINHA",),
+    "LANCHE": ("LANCHE",),
+    "PIZZA": ("PIZZA",),
+    "BANANA": ("BANANA",),
+    "OVOS": ("OVO", "OVOS"),
+    "BISCOITO": ("BISCOITO", "BISCOITOS"),
+    "LEITE": ("LEITE INTEGRAL", "LEITE DESNATADO", "LEITE SEMIDESNATADO"),
+    "BEBIDA LÁCTEA": ("BEBIDA LACTEA",),
+    "ACHOCOLATADO PRONTO": ("TODDYNHO", "NESCAU 1L", "NESCAU 1 L"),
+    "ACHOCOLATADO": ("ACHOC NESCAU", "ACHOCOLATADO"),
+    "IOGURTE": ("IOGURTE",),
+    "QUEIJO FATIADO": ("MUSSARELA FATIADA", "MUCARELA FATIADA", "QUEIJO FATIADO", "QUEIJO"),
+    "CEREAL MATINAL": ("CEREAL MAT", "CEREAL MATINAL", "CER NESTLE", "SUCRILHOS"),
+    "BARRA DE CEREAL": ("BARRA CEREAL", "BARRA DE CEREAL"),
+    "MOLHO DE TOMATE": ("MOLHO TOMATE", "MOLHO DE TOMATE"),
+    "CAFÉ": ("PO DE CAFE", "CAFE EM PO"),
+    "AÇÚCAR": ("ACUCAR",),
+    "SHAMPOO": ("SHAMPOO", "SH JJ BABY"),
+    "DESODORANTE": ("DESODORANTE",),
+    "SABONETE": ("SABONETE",),
+    "PASTA DE DENTE": ("SENSODYNE", "PASTA DE DENTE", "CREME DENTAL"),
+    "PROTETOR DIÁRIO": ("CAREFREE", "ABS CAREFREE"),
+    "LENÇO DE PAPEL": ("LENCO DE PAPEL", "LENCOS PAPEL", "LENCOS DE PAPEL"),
+    "HIDRATANTE CORPORAL": ("LOC HID NEUTROGENA", "LOCAO HIDRATANTE NEUTROGENA"),
+    "ESMALTE": ("ESMALTE", "ESMALTES"),
+    "WHEY": ("SUPER WHEY", "WHEY"),
+    "WHEY BARRA": ("BARRA WHEY", "BARRA DE WHEY", "WHEY BARRA"),
+    "CREATINA": ("CREATINA",),
+    "PILHA": ("PILHA", "PILHAS"),
+    "LÂMPADA": ("LAMP", "LAMPADA"),
+    "TÊNIS": ("TENIS",),
+    "COPO DESCARTÁVEL": ("COPO DESCARTAVEL", "COPOS DESCARTAVEIS"),
+}
+
+
+def normalize_item_alias(value):
+    # Ignore accents, punctuation and repeated whitespace only for matching.
+    return " ".join(re.sub(r"[^A-Z0-9]+", " ", normalize_text(value)).split())
+
+
 def get_item_group(item_name):
-    name = normalize_text(item_name)
-
-    group_rules = [
-        # SHAMPOO
-        ("SHAMPOO DOVE HIDRATACAO", "SHAMPOO"),
-        ("SHAMPOO PANTENE LISO EXTREMO", "SHAMPOO"),
-
-        # DESODORANTE
-        ("DESODORANTE NIVEA", "DESODORANTE"),
-        ("DESODORANTE", "DESODORANTE"),
-
-        ("SABONETE DOVE", "SABONETE"),
-        ("SENSODYNE", "PASTA DE DENTE"),
-
-        # Rice
-        ("ARROZ A GREGA", "ARROZ"),
-        ("ARROZ BRANCO", "ARROZ"),
-        ("ARROZ INTEGRAL", "ARROZ"),
-
-        # Beer
-        ("CERVEJA BRAHMA", "CERVEJA"),
-        ("CERVEJA PURO MALTE", "CERVEJA"),
-
-        # Beans
-        ("FEIJAO TROPEIRO", "FEIJÃO"),
-        ("FEIJAO CARIOCA", "FEIJÃO"),
-
-        # Bread
-        ("PAO FRANCES", "PÃO"),
-        ("BISNAGUINHA", "PÃO"),
-
-        # Chicken
-        ("FILE DE FRANGO", "FRANGO FATIADO"),
-        ("FILE DE PEITO", "FRANGO"),
-        ("PEITO DE FRANGO", "FRANGO"),
-        ("FRANGO GRELHADO", "FRANGO GRELHADO"),
-
-        # Pasta
-        ("MACARRAO A BOLONHESA", "MACARRÃO"),
-        ("MACARRAO BOLONHESA", "MACARRÃO"),
-
-        # MIOJO
-        ("MACARRAO NISSIN", "MACARRÃO INSTANTÂNEO"),
-
-        # Massas
-        ("CANELONE", "MASSAS"),
-
-        # Cassava
-        ("MANDIOCA FRITA", "MANDIOCA"),
-        ("PURE DE MANDIOCA", "MANDIOCA"),
-
-        # Soft drinks
-        ("REFRIGERANTE COCA COLA", "REFRIGERANTE"),
-        ("REFRIGERANTE SUKITA", "REFRIGERANTE"),
-        ("REFRIGERANTE 2L", "REFRIGERANTE"),
-
-        # Dairy
-        ("LEITE INTEGRAL", "LEITE"),
-        ("BEBIDA LACTEA", "BEBIDA LACTEA"),
-        ("ACHOC NESCAU", "BEBIDA LACTEA"),
-        ("MUSSARELA FATIADA", "QUEIJO FATIADO"),
-        ("CREME DE RICOTA", "QUEIJO"),
-        ("REQUEIJAO", "QUEIJO"),
-
-        # Fish
-        ("FILE DE MERLUZA A MILANESA", "PEIXE"),
-        ("FILE DE MERLUZA", "PEIXE"),
-
-        # Supplements
-        ("SUPER WHEY", "WHEY"),
-        ("BARRA WHEY", "WHEY BARRA"),
-
-        # Farofa
-        ("FAROFA ESPECIAL", "FAROFA"),
-        ("FAROFA TRADICIONAL", "FAROFA"),
-    ]
-
-    for variation, group_name in group_rules:
-        if variation in name:
-            return group_name
-
-    # Items without a group retain their original name
-    return str(item_name).strip()
+    name = normalize_item_alias(item_name)
+    best_group = None
+    best_length = -1
+    for group_name, aliases in ITEM_ALIASES.items():
+        for alias in (group_name, *aliases):
+            key = normalize_item_alias(alias)
+            if (name == key or name.startswith(key + " ")) and len(key) > best_length:
+                best_group = group_name
+                best_length = len(key)
+    return best_group or " ".join(str(item_name or "").strip().split())
 
 
 def get_item_emoji(item_name):
@@ -536,8 +626,9 @@ def get_item_emoji(item_name):
 @callback(
     Output("expense-items-cards", "children"),
     Input("expense-type-selector", "value"),
+    Input("home-month-filter", "value"),
 )
-def display_expenses_by_item(selected_expense):
+def display_expenses_by_item(selected_expense, selected_month):
     if not selected_expense:
         return html.P("Selecione uma categoria.")
 
@@ -551,6 +642,9 @@ def display_expenses_by_item(selected_expense):
 
     for row in values[1:]:
         row = (row + [""] * 5)[:5]
+
+        if not date_matches_month(row[0], selected_month):
+            continue
 
         item_name = str(row[1]).strip()
         total_value = row[3]
@@ -675,14 +769,266 @@ def parse_currency(value):
     return float(cleaned)
 
 
+@callback(
+    Output("weekday-forecast-card", "children"),
+    Output("weekend-forecast-card", "children"),
+    Output("monthly-forecast-card", "children"),
+    Output("weekday-weekend-forecast", "figure"),
+    Output("forecast-method-note", "children"),
+    Input("expense-type-selector", "value"),
+    Input("home-month-filter", "value"),
+)
+def update_weekday_weekend_forecast(selected_expense, selected_month):
+    """Estimate spending occurrence and amount for weekdays/weekends."""
+    worksheet = spreadsheet.worksheet(FOLHA_EVENTOS)
+    values = worksheet.get("A1:E")
+
+    empty_card = html.P("Ainda não há dados suficientes.")
+
+    if not values or len(values) < 2:
+        return empty_card, empty_card, empty_card, go.Figure(), ""
+
+    transactions = []
+
+    for row in values[1:]:
+        row = (row + [""] * 5)[:5]
+
+        if (
+            selected_expense
+            and normalize_text(row[4]) != normalize_text(selected_expense)
+        ):
+            continue
+
+        date = pd.to_datetime(
+            str(row[0]).strip(),
+            dayfirst=True,
+            errors="coerce",
+        )
+
+        if pd.isna(date) or not date_matches_month(row[0], selected_month):
+            continue
+
+        try:
+            total = parse_currency(row[3])
+        except (TypeError, ValueError):
+            continue
+
+        transactions.append({"DATE": date.normalize(), "TOTAL": total})
+
+    if not transactions:
+        return empty_card, empty_card, empty_card, go.Figure(), ""
+
+    daily_spending = (
+        pd.DataFrame(transactions)
+        .groupby("DATE")["TOTAL"]
+        .sum()
+        .sort_index()
+    )
+
+    # Missing calendar dates are real zero-spending days, not missing data.
+    today = pd.Timestamp.today().normalize()
+    month_start = (
+        pd.Timestamp(f"{selected_month}-01")
+        if selected_month and selected_month != "TODOS"
+        else today.replace(day=1)
+    )
+    month_end = month_start + pd.offsets.MonthEnd(0)
+    observation_end = min(today, month_end)
+    complete_dates = pd.date_range(
+        start=month_start if selected_month != "TODOS" else daily_spending.index.min(),
+        end=observation_end,
+        freq="D",
+    )
+    daily_spending = daily_spending.reindex(complete_dates, fill_value=0.0)
+
+    weekdays = daily_spending[daily_spending.index.dayofweek < 5]
+    weekends = daily_spending[daily_spending.index.dayofweek >= 5]
+
+    def estimate_period(series, days_in_next_week):
+        if series.empty:
+            return {
+                "probability": 0.0,
+                "amount_when_spending": 0.0,
+                "expected_daily": 0.0,
+                "expected_period": 0.0,
+            }
+
+        positive_days = series[series > 0]
+        probability = float((series > 0).mean())
+        amount_when_spending = (
+            float(positive_days.mean()) if not positive_days.empty else 0.0
+        )
+        expected_daily = probability * amount_when_spending
+
+        return {
+            "probability": probability,
+            "amount_when_spending": amount_when_spending,
+            "expected_daily": expected_daily,
+            "expected_period": expected_daily * days_in_next_week,
+        }
+
+    weekday_prediction = estimate_period(weekdays, 5)
+    weekend_prediction = estimate_period(weekends, 2)
+
+    # Estimate the selected month; completed months have no remaining days.
+
+    monthly_weekday_prediction = estimate_period(weekdays, 1)
+    monthly_weekend_prediction = estimate_period(weekends, 1)
+
+    actual_current_month = float(
+        daily_spending[
+            (daily_spending.index >= month_start)
+            & (daily_spending.index <= today)
+        ].sum()
+    )
+
+    remaining_dates = pd.date_range(
+        start=max(today + pd.Timedelta(days=1), month_start),
+        end=month_end,
+        freq="D",
+    )
+    remaining_weekdays = int((remaining_dates.dayofweek < 5).sum())
+    remaining_weekends = int((remaining_dates.dayofweek >= 5).sum())
+
+    predicted_remaining = (
+        remaining_weekdays
+        * monthly_weekday_prediction["expected_daily"]
+        + remaining_weekends
+        * monthly_weekend_prediction["expected_daily"]
+    )
+    predicted_month_total = actual_current_month + predicted_remaining
+
+    def forecast_card(icon, title, prediction, period_label):
+        return [
+            html.H4(f"{icon} {title}"),
+            html.P(
+                "Chance de gastar: "
+                f"{prediction['probability'] * 100:.1f}%"
+            ),
+            html.P(
+                "Esperado por dia: "
+                f"{format_brl(prediction['expected_daily'])}"
+            ),
+            html.H5(
+                f"{period_label}: "
+                f"{format_brl(prediction['expected_period'])}"
+            ),
+        ]
+
+    weekday_card = forecast_card(
+        "💼",
+        "Dias úteis",
+        weekday_prediction,
+        "Próxima segunda–sexta",
+    )
+    weekend_card = forecast_card(
+        "🌴",
+        "Fim de semana",
+        weekend_prediction,
+        "Próximo sábado–domingo",
+    )
+    monthly_card = [
+        html.H4("📅 Previsão mensal"),
+        html.P(
+            f"Gasto no mês ({month_start:%m/%Y}): {format_brl(actual_current_month)}"
+        ),
+        html.P(
+            f"Previsão restante: {format_brl(predicted_remaining)}"
+        ),
+        html.H5(
+            f"Total previsto: {format_brl(predicted_month_total)}"
+        ),
+    ]
+
+    figure = go.Figure(
+        go.Bar(
+            x=["Dias úteis", "Fim de semana"],
+            y=[
+                weekday_prediction["expected_period"],
+                weekend_prediction["expected_period"],
+            ],
+            marker_color=["#2ecc71", "#3498db"],
+            customdata=[
+                [
+                    weekday_prediction["expected_daily"],
+                    weekday_prediction["probability"] * 100,
+                ],
+                [
+                    weekend_prediction["expected_daily"],
+                    weekend_prediction["probability"] * 100,
+                ],
+            ],
+            hovertemplate=(
+                "<b>%{x}</b><br>"
+                "Total previsto: R$ %{y:,.2f}<br>"
+                "Esperado/dia: R$ %{customdata[0]:,.2f}<br>"
+                "Chance de gastar: %{customdata[1]:.1f}%"
+                "<extra></extra>"
+            ),
+        )
+    )
+    figure.update_layout(
+        title="Previsão para a próxima semana",
+        xaxis_title="Período",
+        yaxis_title="Total previsto (R$)",
+        template="plotly_white",
+    )
+
+    history_days = len(daily_spending)
+    category_label = selected_expense or "todas as despesas"
+
+    if history_days < 56:
+        method_note = (
+            f"Estimativa inicial para {category_label}: {history_days} dias "
+            "de histórico. A precisão tende a melhorar após 8 semanas."
+        )
+    else:
+        method_note = (
+            f"Modelo de duas etapas para {category_label}, usando "
+            f"o período selecionado ({history_days} dias): "
+            "chance de gastar × valor médio quando há gasto."
+        )
+
+    if selected_month and selected_month != "TODOS":
+        method_note += f" Mês de referência: {month_start:%m/%Y}."
+
+    return (
+        weekday_card,
+        weekend_card,
+        monthly_card,
+        figure,
+        method_note,
+    )
+
+
+
+@callback(
+    Output("grafico-month-filter", "options"),
+    Output("grafico-month-filter", "value"),
+    Input("dash_table1", "data"),
+    State("grafico-month-filter", "value"),
+)
+def update_plot_months(data, selected_month):
+    months = set()
+    for row in data or []:
+        date = pd.to_datetime(row.get("DATA", ""), dayfirst=True, errors="coerce")
+        if pd.notna(date):
+            months.add(date.strftime("%Y-%m"))
+    options = [{"label": "Todos os meses", "value": "TODOS"}] + [
+        {"label": f"{month[5:]}/{month[:4]}", "value": month}
+        for month in sorted(months, reverse=True)
+    ]
+    return options, selected_month if selected_month in months else "TODOS"
+
 
 @callback(
     Output("grafico-data", "figure"),
     Output("grafico-despesas", "figure"),
     Input("dash_table1", "data"),
     Input("grafico-expense-filter", "value"),
+    Input("grafico-month-filter", "value"),
 )
-def update_plots(data, selected_expense):
+def update_plots(data, selected_expense, selected_month):
     if not data:
         return go.Figure(), go.Figure()
 
@@ -704,6 +1050,9 @@ def update_plots(data, selected_expense):
         df["DESPESAS"].astype(str).str.strip() != ""
     ]
 
+    if selected_month and selected_month != "TODOS":
+        df = df[df["DATA"].dt.strftime("%Y-%m") == selected_month]
+
     # If nothing or "TODAS" is selected, keep every expense type.
     # Otherwise, filter by the selected expense.
     if selected_expense and selected_expense != "TODAS":
@@ -714,7 +1063,7 @@ def update_plots(data, selected_expense):
     else:
         df_filtered = df
 
-    if df.empty:
+    if df_filtered.empty:
         empty_figure = go.Figure()
 
         empty_figure.add_annotation(
@@ -757,6 +1106,9 @@ def update_plots(data, selected_expense):
     else:
         title_suffix = str(selected_expense).title()
 
+    if selected_month and selected_month != "TODOS":
+        title_suffix += f" — {selected_month[5:]}/{selected_month[:4]}"
+
     figure_date.update_layout(
         title=f"Gastos por data — {title_suffix}",
         xaxis_title="Data",
@@ -766,7 +1118,7 @@ def update_plots(data, selected_expense):
 
     # Total grouped by expense type
     by_expense = (
-        df.groupby("DESPESAS", as_index=False)["TOTAL"]
+        df_filtered.groupby("DESPESAS", as_index=False)["TOTAL"]
         .sum()
         .sort_values("TOTAL", ascending=False)
     )
@@ -796,11 +1148,6 @@ def update_plots(data, selected_expense):
         tickformat="%d/%m/%Y",
     )
 
-    figure_date.update_layout(
-        title="DESPESAS POR DATA",
-        xaxis_title="DATA",
-        yaxis_title="TOTAL")
-
     return figure_date, figure_expenses
 
 
@@ -815,7 +1162,6 @@ def update_plots(data, selected_expense):
     Output("qtd-item", "value"),
     Output("preco-item", "value"),
     Output("despesas-dropdown", "value"),
-    Output("total-mensal", "children"),
     Input("register-button", "n_clicks"),
     State("nome-do-item", "value"),
     State("qtd-item", "value"),
@@ -874,36 +1220,6 @@ def register_item(n_clicks, nome, qtd, preco, despesas):
 
     values = worksheet.get("A1:E")
 
-    # calculate the total spent in a month and display it in a card like box
-    agora = datetime.now()
-    total_mensal = 0.0
-
-    for row in values[1:]:
-        row = (row + [""] * 5)[:5]
-
-        try:
-            data_registro = datetime.strptime(
-                str(row[0]).strip(),
-                "%d/%m/%Y",
-            )
-
-            if (
-                data_registro.month == agora.month
-                and data_registro.year == agora.year
-            ):
-                # Column D contains preco_total
-                total_mensal += parse_currency(row[3])
-
-        except (ValueError, TypeError, IndexError):
-            continue
-
-    total_mensal_formatado = (
-        f"R$ {total_mensal:,.2f}"
-        .replace(",", "_")
-        .replace(".", ",")
-        .replace("_", ".")
-    )
-
     if not values:
         return (
             [],
@@ -912,7 +1228,6 @@ def register_item(n_clicks, nome, qtd, preco, despesas):
             no_update,
             no_update,
             no_update,
-            "R$ 0,00",
         )
 
 
@@ -944,7 +1259,6 @@ def register_item(n_clicks, nome, qtd, preco, despesas):
             None,
             None,
             None,
-            total_mensal_formatado,
         )
 
     return (
@@ -954,7 +1268,6 @@ def register_item(n_clicks, nome, qtd, preco, despesas):
         no_update,
         no_update,
         no_update,
-        total_mensal_formatado,
     )
 
 
