@@ -234,7 +234,7 @@ def display_page(pathname):
                     dcc.Input(
                         id="qtd-item",
                         type="number",
-                        style={"width": "60%"},
+                        style={"width": "300px"},
                     )]),
 
                 html.Div([
@@ -449,25 +449,25 @@ def format_brl(value):
 # Aliases are matched at the start of the item name, on whole words.
 # Add variations to the tuples below; the longest matching alias wins.
 ITEM_ALIASES = {
-    "ARROZ": ("ARROZ",),
+    "COXINHA": ("COXINHA DE FRANGO", "COXINHA"),
+    "FAROFA": ("FAROFA", "FAROFA ESPECIAL"),
+    "SALADA": ("SALADA","SALADA MIX", "SALADA MIX VERAO", "SALADA MIX PRIMAVERA"),
+    "ARROZ": ("ARROZ","ARROZ A GREGA", "ARROZ INTEGRAL"),
     "FEIJÃO": ("FEIJAO",),
     "PÃO": ("PAO FRANCES", "BISNAGUINHA", "BISNAGUINHAS"),
     "CERVEJA": ("CERVEJA",),
-    "REFRIGERANTE": ("REFRIGERANTE", "COCA COLA", "SUKITA"),
+    "REFRIGERANTE": ("REFRIGERANTE", "COCA COLA", "SUKITA", "REFRIG 2L"),
     "FRANGO": ("FILE DE FRANGO", "FILE DE PEITO", "PEITO DE FRANGO", "PEITO FRANGO", "FRANGO", "PARMEGIANA DE FRANGO"),
     "PEITO DE FRANGO (FATIADOS)": ("PEITO DE FRANGO FATIADO", "PEITO FRANGO FATIADO", "PEITO DE FRANGO FATIADOS", "PEITO FRANGO FATIADOS", "FRANGO FATIADO", "FRANGO FATIADOS"),
     "PEIXE": ("FILE DE MERLUZA", "MERLUZA"),
     "MACARRÃO INSTANTÂNEO": ("MACARRAO NISSIN", "MACARRAO INSTANTANEO", "MIOJO"),
-    "MACARRÃO": ("MACARRAO",),
+    "MACARRÃO": ("MACARRAO","MACARRAO A BOLONHESA"),
     "MASSAS": ("CANELONE", "LASANHA", "NHOQUE", "PANQUECA"),
-    "MANDIOCA": ("MANDIOCA", "PURE DE MANDIOCA"),
+    "MANDIOCA": ("MANDIOCA", "PURE DE MANDIOCA", "MANDIOCA FRITA"),
     "BATATA": ("BATATA FRITA", "BATATA RUSTICA"),
     "BATATA-DOCE": ("BATATA DOCE",),
-    "FAROFA": ("FAROFA",),
-    "CUSCUZ": ("CUSCUZ",),
-    "SALADA": ("SALADA",),
+    "CUSCUZ": ("CUSCUZ", "CUSCUZ FRANGO"),
     "LEGUMES SALTEADOS": ("LEGUMES SALTEADOS",),
-    "COXINHA": ("COXINHA",),
     "LANCHE": ("LANCHE",),
     "PIZZA": ("PIZZA",),
     "BANANA": ("BANANA",),
